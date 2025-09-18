@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>¡Feliz Cumpleaños!</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="hero">
+    <img src="./assets/butcher.jpg" alt="Butcher" class="butcher-img">
+    <h1>🎉 ¡Feliz Cumpleaños!</h1>
+    <p class="subtitle">Tu app de cupones y retos</p>
+  </header>
+
+  <main>
+    <section id="login-section" class="card">
+      <h2>Iniciar sesión</h2>
+      <label>Usuario</label>
+      <input id="username" type="text" placeholder="butcher">
+      <label>Contraseña</label>
+      <input id="password" type="password" placeholder="••••••••">
+      <button id="login-btn">Entrar</button>
+      <p class="hint">Usuario: <b>butcher</b> · Contraseña: <b>butcher123</b></p>
+      <div id="login-msg" class="msg"></div>
+    </section>
+
+    <section id="app-section" class="hidden">
+      <nav class="topbar">
+        <div class="brand">🎁 Cupones</div>
+        <div class="actions">
+          <button id="nav-dashboard">Tablero</button>
+          <button id="nav-habits">Hábitos</button>
+          <button id="logout-btn">Salir</button>
+        </div>
+      </nav>
+
+      <div id="dashboard-view" class="view">
+        <div class="filters">
+          <button data-filter="all" class="chip selected">Todos</button>
+          <button data-filter="available" class="chip">Disponibles</button>
+          <button data-filter="inprogress" class="chip">En curso</button>
+          <button data-filter="redeemed" class="chip">Canjeados</button>
+        </div>
+        <div id="coupons-grid" class="grid"></div>
+      </div>
+
+      <div id="habits-view" class="view hidden">
+        <h2>Hábitos</h2>
+        <div class="card">
+          <h3>Hoy</h3>
+          <div class="row">
+            <button id="mark-healthy">Marcar día saludable ✅</button>
+            <button id="mark-junk">Marcar chatarra 🍟</button>
+            <button id="add-exercise">Agregar sesión de ejercicio 🏃</button>
+          </div>
+          <div id="habit-msg" class="msg"></div>
+        </div>
+        <div class="card">
+          <h3>Resumen (últimas 4 semanas)</h3>
+          <div id="habits-summary"></div>
+        </div>
+      </div>
+
+      <div id="modal" class="modal hidden">
+        <div class="modal-content">
+          <span id="modal-close">&times;</span>
+          <div id="modal-body"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <small>Hecho con cariño · tonos tierra & dorado</small>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>

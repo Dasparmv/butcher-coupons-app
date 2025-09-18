@@ -1,0 +1,191 @@
+[
+  {
+    "id": "cine",
+    "titulo": "Visita al cine con cancha y gaseosa",
+    "tipo": "directo",
+    "max_uses": 3,
+    "descripcion": "Ida al cine con canchita y gaseosa.",
+    "puntos": 2
+  },
+  {
+    "id": "comida_rapida",
+    "titulo": "Comida rápida donde quieras",
+    "tipo": "directo",
+    "max_uses": 5,
+    "descripcion": "Comida rápida a elección, cuando quieras.",
+    "puntos": 1
+  },
+  {
+    "id": "full_day",
+    "titulo": "Full Day con desayuno, almuerzo y cena",
+    "tipo": "directo",
+    "max_uses": 1,
+    "descripcion": "Día completo con todas las comidas incluidas.",
+    "puntos": 8
+  },
+  {
+    "id": "cena_premium",
+    "titulo": "Cena en cualquier restaurante",
+    "tipo": "directo",
+    "max_uses": 1,
+    "descripcion": "Una cena especial en el restaurante que elijas.",
+    "puntos": 5
+  },
+  {
+    "id": "almuerzo_premium",
+    "titulo": "Almuerzo en cualquier restaurante",
+    "tipo": "directo",
+    "max_uses": 1,
+    "descripcion": "Un almuerzo donde tú quieras.",
+    "puntos": 3
+  },
+  {
+    "id": "pulsera_ojo_turco",
+    "titulo": "Cambio de pulsera de ojo turco",
+    "tipo": "directo",
+    "max_uses": 3,
+    "descripcion": "Cambio de pulsera cuando lo necesites.",
+    "puntos": 2
+  },
+  {
+    "id": "finde_lima",
+    "titulo": "Fin de semana dentro de Lima",
+    "tipo": "reto",
+    "max_uses": 1,
+    "descripcion": "Cieneguilla, Sur, etc. Requiere retos y dependencias.",
+    "puntos": 12,
+    "requirements": {
+      "type": "allOf",
+      "requirements": [
+        {
+          "type": "streak",
+          "metric": "dieta_saludable",
+          "days": 6,
+          "consecutive": true,
+          "weeklyCheat": 1
+        },
+        {
+          "type": "redeemed",
+          "couponId": "pulsera_ojo_turco",
+          "count": 1
+        },
+        {
+          "type": "redeemed",
+          "couponId": "cine",
+          "count": 1
+        }
+      ]
+    }
+  },
+  {
+    "id": "joya_plata",
+    "titulo": "Cualquier joya de plata",
+    "tipo": "reto",
+    "max_uses": 1,
+    "descripcion": "Reto de comer saludable 30 días (1 chatarra/semana).",
+    "puntos": 10,
+    "requirements": {
+      "type": "checklist",
+      "metric": "dieta_saludable",
+      "days": 30,
+      "weeklyCheat": 1
+    }
+  },
+  {
+    "id": "excepcion_reto",
+    "titulo": "Día de excepción de reto",
+    "tipo": "directo",
+    "max_uses": 6,
+    "descripcion": "Un día adicional de chatarra sin afectar el reto.",
+    "puntos": 1
+  },
+  {
+    "id": "joya_oro",
+    "titulo": "Una joya de oro",
+    "tipo": "reto",
+    "max_uses": 1,
+    "descripcion": "Reto: 3 meses dieta (1 chatarra/sem) + ejercicio 3x/sem por 12 semanas.",
+    "puntos": 25,
+    "requirements": {
+      "type": "allOf",
+      "requirements": [
+        {
+          "type": "checklist",
+          "metric": "dieta_saludable",
+          "days": 90,
+          "weeklyCheat": 1
+        },
+        {
+          "type": "weeklyTarget",
+          "metric": "ejercicio",
+          "perWeek": 3,
+          "weeks": 12,
+          "consecutiveWeeks": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "prenda_200",
+    "titulo": "Prenda (máx S/200)",
+    "tipo": "reto",
+    "max_uses": 1,
+    "descripcion": "Reto: 3 semanas de comer saludable (6 días/sem).",
+    "puntos": 8,
+    "requirements": {
+      "type": "weeklyTarget",
+      "metric": "dieta_saludable",
+      "perWeek": 6,
+      "weeks": 3,
+      "consecutiveWeeks": true,
+      "weeklyCheat": 1
+    }
+  },
+  {
+    "id": "ropa_butchis",
+    "titulo": "Ropa para Butchis",
+    "tipo": "reto",
+    "max_uses": 2,
+    "descripcion": "Depende de canjear 1 cupón de cine y 1 de comida rápida.",
+    "puntos": 2,
+    "requirements": {
+      "type": "allOf",
+      "requirements": [
+        {
+          "type": "redeemed",
+          "couponId": "cine",
+          "count": 1
+        },
+        {
+          "type": "redeemed",
+          "couponId": "comida_rapida",
+          "count": 1
+        }
+      ]
+    }
+  },
+  {
+    "id": "sorpresa_1",
+    "titulo": "Cupón Sorpresa 1",
+    "tipo": "sorpresa",
+    "max_uses": 0,
+    "descripcion": "Se desbloqueará pronto…",
+    "puntos": 0
+  },
+  {
+    "id": "sorpresa_2",
+    "titulo": "Cupón Sorpresa 2",
+    "tipo": "sorpresa",
+    "max_uses": 0,
+    "descripcion": "Se desbloqueará pronto…",
+    "puntos": 0
+  },
+  {
+    "id": "sorpresa_3",
+    "titulo": "Cupón Sorpresa 3",
+    "tipo": "sorpresa",
+    "max_uses": 0,
+    "descripcion": "Se desbloqueará pronto…",
+    "puntos": 0
+  }
+]
