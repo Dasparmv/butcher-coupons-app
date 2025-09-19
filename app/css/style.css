@@ -55,16 +55,37 @@ button.secondary{background:#b59d7a}
 #modal-close{position:absolute;right:12px;top:8px;cursor:pointer;font-size:20px}
 footer{padding:24px;text-align:center;color:#6a5e52}
 
-/* Mini reset button 'R' on coupon cards */
+/* Layout dos columnas en Hábitos (izq contenido, der indicadores) */
+.cols{
+  display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;
+}
+@media (max-width: 860px){
+  .cols{grid-template-columns:1fr}
+}
+
+/* Mini reset button 'R' en esquina inferior derecha */
 .coupon .mini-reset{
-  position:absolute;left:10px;top:10px;
+  position:absolute;right:10px;bottom:10px;
   background:transparent;color:#b03a2e;border:1px solid #b03a2e;
   width:22px;height:22px;border-radius:50%;font-weight:700;line-height:20px;
   padding:0;text-align:center;font-size:12px;
 }
 .coupon .mini-reset:hover{background:#ffeaea}
+
+/* Ticket */
 .share-actions button{margin-top:8px}
 .ticket{
   border:2px dashed var(--dorado);padding:16px;border-radius:12px;background:#fffdf5
 }
 .ticket h3{margin-top:0}
+
+/* Indicadores (tarjetas pequeñas) */
+.indicators{
+  display:grid;gap:10px;
+}
+.indicator{
+  border:1px solid #eadfc7;border-radius:10px;padding:12px;background:#fff;
+}
+.indicator h4{margin:0 0 6px;color:#4d3c2f;font-size:14px}
+.indicator .big{font-size:24px;font-weight:700;color:#6B4F3A}
+.indicator .sub{font-size:12px;color:#6a5e52}
