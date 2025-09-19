@@ -1,4 +1,3 @@
-
 // Load config
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -37,6 +36,7 @@ const filterBtns = document.querySelectorAll('.filters .chip');
 const modal = document.getElementById('modal');
 const modalBody = document.getElementById('modal-body');
 const modalClose = document.getElementById('modal-close');
+const resetHabitsBtn = document.getElementById('reset-habits');
 
 let COUPONS = [];
 let sessionUser = null;
@@ -93,6 +93,90 @@ function hide(el){ el.classList.add('hidden'); }
 function openModal(html){ modalBody.innerHTML = html; show(modal); }
 function closeModal(){ hide(modal); }
 
+// --- EXTRAS v2 ---
+// Resetear hábitos (borra todas las filas del usuario en habit_log)
+async function resetHabits(){
+  if(!confirm('¿Seguro que quieres reiniciar todos los hábitos? Esta acción no se puede deshacer.')) return;
+  const { error } = await supabase.from('habit_log').delete().eq('user_id', sessionUser.id);
+  if(error){ console.error(error); habitMsg.textContent = 'Error al reiniciar.'; return; }
+  habitMsg.textContent = 'Hábitos reiniciados ✔️';
+  await renderDashboard(currentFilter);
+  await renderHabitsSummary();
+}
+
+// Reiniciar usos de un cupón con contraseña
+async function resetCouponUses(couponId){
+  const pass = prompt("Contraseña para reiniciar (indicada por Junior):");
+  if(pass !== "jv082000"){ alert("Contraseña incorrecta."); return; }
+  const { data: row, error } = await supabase
+    .from('coupon_state')
+    .select('*').eq('user_id', sessionUser.id).eq('coupon_id', couponId).single();
+  if(error){ console.error(error); return; }
+  const { error: upErr } = await supabase.from('coupon_state')
+    .update({ redeemed_count: 0, updated_at: new Date().toISOString() })
+    .eq('id', row.id);
+  if(upErr){ console.error(upErr); alert("No se pudo reiniciar."); return; }
+  await renderDashboard(currentFilter);
+  alert("Cupón reiniciado a 0 usos.");
+}
+
+// Ticket con imagen compartible (Web Share API si está disponible)
+async function showRedeemedTicket(coupon){
+  const date = new Date().toLocaleString();
+  const modalHtml = `
+    <div class="ticket">
+      <h3>${coupon.titulo}</h3>
+      <p>Canjeado el: ${date}</p>
+      <canvas id="ticket-canvas" width="720" height="400" style="width:100%;max-width:720px;"></canvas>
+      <div class="share-actions">
+        <button id="btn-share">Compartir por WhatsApp</button>
+        <a id="btn-download" class="secondary" download="cupon-${coupon.id}.png">Descargar imagen</a>
+      </div>
+    </div>
+  `;
+  openModal(modalHtml);
+
+  // Dibujar el ticket
+  const canvas = document.getElementById('ticket-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FAF4E6'; ctx.fillRect(0,0,720,400);
+  ctx.strokeStyle = '#C9A227'; ctx.lineWidth = 6; ctx.setLineDash([12,8]); ctx.strokeRect(10,10,700,380);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#6B4F3A';
+  ctx.font = '28px system-ui';
+  ctx.fillText('Cupón canjeado', 30, 60);
+  ctx.font = 'bold 34px system-ui';
+  ctx.fillText(coupon.titulo.substring(0,30), 30, 120);
+  ctx.font = '22px system-ui';
+  ctx.fillText(`Fecha: ${date}`, 30, 170);
+  ctx.fillStyle = '#C57B57';
+  ctx.fillRect(30, 290, 660, 60);
+  ctx.fillStyle = '#fff';
+  ctx.font = '24px system-ui';
+  ctx.fillText('Con cariño 💛', 40, 330);
+
+  const dataURL = canvas.toDataURL('image/png');
+  const dl = document.getElementById('btn-download');
+  dl.href = dataURL;
+
+  document.getElementById('btn-share').addEventListener('click', async ()=>{
+    const text = `¡Canjeado! ${coupon.titulo} • ${date}`;
+    try{
+      const res = await fetch(dataURL);
+      const blob = await res.blob();
+      const file = new File([blob], `cupon-${coupon.id}.png`, { type: 'image/png' });
+      if(navigator.canShare && navigator.canShare({ files: [file] })){
+        await navigator.share({ files:[file], title:'Cupón canjeado', text });
+        return;
+      }
+    }catch(e){ /* fallback abajo */ }
+    // Fallback: WhatsApp con texto (la imagen puedes adjuntarla manualmente si el navegador no soporta compartir archivos)
+    const url = 'https://wa.me/?text=' + encodeURIComponent(text);
+    window.open(url, '_blank');
+  });
+}
+// --- FIN EXTRAS v2 ---
+
 // Render dashboard
 async function fetchStates(){
   const { data, error } = await supabase
@@ -124,7 +208,6 @@ function computeStatus(coupon, stateRow, habits, allStates){
     return { status, progress: (used/(coupon.max_uses||1))*100, usesLeft };
   }
   // tipo reto: evaluar elegibilidad básica
-  let eligible = false;
   let progressPct = 0;
   const req = coupon.requirements || {};
   function countRedeemed(id){
@@ -161,7 +244,6 @@ function computeStatus(coupon, stateRow, habits, allStates){
     let weekPtr = weekStart(from);
     while(weekPtr <= today){
       const weekEnd = addDays(weekPtr, 6);
-      // count junk in this week within [from, today]
       let junk=0;
       for(let d=new Date(weekPtr); d<=weekEnd && d<=today; d=addDays(d,1)){
         if(d<from) continue;
@@ -207,15 +289,13 @@ function computeStatus(coupon, stateRow, habits, allStates){
       return (healthy>=n) && okCheat;
     }
     if(r.type==='weeklyTarget'){
-      // metric diet or exercise
       const weeks = r.weeks||1;
       if(r.metric==='ejercicio'){
         const ok = exercisePerWeekOk(weeks, r.perWeek||3);
-        progressPct = ok ? 100 : 50; // simple
+        progressPct = ok ? 100 : 50;
         return ok;
       }
       if(r.metric==='dieta_saludable'){
-        // need perWeek healthy days, for consecutive weeks
         const perWeek = r.perWeek||6;
         const start = weekStart(addDays(today, -7*(weeks-1)));
         let w = new Date(start);
@@ -232,7 +312,7 @@ function computeStatus(coupon, stateRow, habits, allStates){
           if((r.weeklyCheat||0) < junk) return false;
           w = addDays(w, 7);
         }
-        progressPct = 100; // if we got here
+        progressPct = 100;
         return true;
       }
     }
@@ -245,7 +325,7 @@ function computeStatus(coupon, stateRow, habits, allStates){
     return true;
   }
 
-  eligible = evalReq(req);
+  const eligible = evalReq(req);
   const status = eligible ? (usesLeft>0 ? 'disponible' : 'canjeado') : 'en_progreso';
   return { status, progress: progressPct, usesLeft };
 }
@@ -271,6 +351,7 @@ async function renderDashboard(filter="all"){
     const div = document.createElement('div');
     div.className = "coupon";
     div.innerHTML = `
+      <button class="mini-reset" title="Reiniciar cupón" data-action="reset-coupon" data-id="${c.id}">R</button>
       <span class="badge ${comp.status.replace('_','')}">${statusLabel(comp.status)}</span>
       <h4>${c.titulo}</h4>
       <p>${c.descripcion||''}</p>
@@ -320,7 +401,8 @@ async function canjearCoupon(couponId){
     .eq('id', row.id);
   if(upErr){ console.error(upErr); return; }
   await renderDashboard(currentFilter);
-  alert("🎉 Cupón canjeado. ¡Felicidades!");
+  // Mostrar ticket para compartir/descargar (v2)
+  await showRedeemedTicket(c);
 }
 
 async function markToday(kind){
@@ -417,6 +499,9 @@ couponsGrid.addEventListener('click', async (e)=>{
   if(action==='canjear'){
     await canjearCoupon(id);
   }
+  if(action==='reset-coupon'){
+    await resetCouponUses(id);
+  }
 });
 
 modalClose.addEventListener('click', closeModal);
@@ -425,6 +510,7 @@ modal.addEventListener('click', (e)=>{ if(e.target===modal) closeModal(); });
 document.getElementById('mark-healthy').addEventListener('click', ()=>markToday('healthy'));
 document.getElementById('mark-junk').addEventListener('click', ()=>markToday('junk'));
 document.getElementById('add-exercise').addEventListener('click', ()=>markToday('exercise'));
+resetHabitsBtn.addEventListener('click', resetHabits);
 
 // Session check on load
 (async function init(){
