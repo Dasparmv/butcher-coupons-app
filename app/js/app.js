@@ -2,14 +2,14 @@
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Simple helper to get YYYY-MM-DD (local)
+// Helpers fecha
 function todayStr(){
   const d = new Date();
   const off = d.getTimezoneOffset();
   const local = new Date(d.getTime() - off*60000);
   return local.toISOString().slice(0,10);
 }
-function weekStart(d){ // Monday as first day
+function weekStart(d){ // Lunes
   const date = new Date(d);
   const day = (date.getDay()+6)%7; // 0=Mon ... 6=Sun
   date.setDate(date.getDate() - day);
@@ -18,6 +18,8 @@ function weekStart(d){ // Monday as first day
 }
 function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
 function toDate(str){ return new Date(str + "T00:00:00"); }
+function weekKeyFromDateObj(d){ return weekStart(d).toISOString().slice(0,10); }
+function weekKey(dateStr){ return weekKeyFromDateObj(toDate(dateStr)); }
 
 // DOM
 const loginSection = document.getElementById('login-section');
@@ -40,6 +42,7 @@ const modal = document.getElementById('modal');
 const modalBody = document.getElementById('modal-body');
 const modalClose = document.getElementById('modal-close');
 const resetHabitsBtn = document.getElementById('reset-habits');
+const habitDateInput = document.getElementById('habit-date');
 
 let COUPONS = [];
 let sessionUser = null;
@@ -53,12 +56,8 @@ async function loadCoupons(){
 // habit_log: id uuid pk, user_id uuid, date date, diet text, exercise_sessions int, created_at
 // coupon_state: id uuid pk, user_id uuid, coupon_id text, redeemed_count int, created_at, updated_at
 
-async function ensureTablesNotes(){
-  console.log("Asegúrate de haber creado las tablas habit_log y coupon_state con RLS.");
-}
-
 async function signIn(username, password){
-  const email = `${username}@local.test`; // usamos email sintético
+  const email = `${username}@local.test`;
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if(error){ throw error; }
   sessionUser = data.user;
@@ -69,7 +68,7 @@ async function signOut(){
   sessionUser = null;
 }
 
-// Bootstrap coupon_state rows if missing
+// Bootstrap coupon_state rows si faltan
 async function bootstrapCouponState(){
   const { data: rows, error } = await supabase
    .from('coupon_state')
@@ -95,20 +94,23 @@ function hide(el){ el.classList.add('hidden'); }
 function openModal(html){ modalBody.innerHTML = html; show(modal); }
 function closeModal(){ hide(modal); }
 
-// --- EXTRAS v2.1 ---
-// Resetear hábitos (borra todas las filas del usuario en habit_log)
+// --- RESET HÁBITOS ---
 async function resetHabits(){
   if(!confirm('¿Seguro que quieres reiniciar todos los hábitos? Esta acción no se puede deshacer.')) return;
   const { error } = await supabase.from('habit_log').delete().eq('user_id', sessionUser.id);
-  if(error){ console.error(error); habitMsg.textContent = 'Error al reiniciar.'; return; }
+  if(error){
+    console.error(error);
+    habitMsg.textContent = 'Error al reiniciar. Revisa que tengas la política DELETE en Supabase.';
+    return;
+  }
   habitMsg.textContent = 'Hábitos reiniciados ✔️';
-  // Refrescar vistas para que el resumen/indicadores queden en 0
+  // Refrescar todo
   await renderDashboard(currentFilter);
   await renderHabitsSummary();
   await renderHabitIndicators();
 }
 
-// Reiniciar usos de un cupón con contraseña
+// Reiniciar usos de un cupón (con clave)
 async function resetCouponUses(couponId){
   const pass = prompt("Contraseña para reiniciar");
   if(pass !== "jv082000"){ alert("Contraseña incorrecta."); return; }
@@ -124,7 +126,7 @@ async function resetCouponUses(couponId){
   alert("Cupón reiniciado a 0 usos.");
 }
 
-// Ticket con imagen compartible (sin mensaje extra)
+// Ticket (sin texto extra)
 async function showRedeemedTicket(coupon){
   const date = new Date().toLocaleString();
   const modalHtml = `
@@ -140,7 +142,6 @@ async function showRedeemedTicket(coupon){
   `;
   openModal(modalHtml);
 
-  // Dibujar el ticket
   const canvas = document.getElementById('ticket-canvas');
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#FAF4E6'; ctx.fillRect(0,0,720,400);
@@ -168,14 +169,13 @@ async function showRedeemedTicket(coupon){
         await navigator.share({ files:[file], title:'Cupón canjeado', text });
         return;
       }
-    }catch(e){ /* fallback abajo */ }
+    }catch(e){}
     const url = 'https://wa.me/?text=' + encodeURIComponent(text);
     window.open(url, '_blank');
   });
 }
-// --- FIN EXTRAS v2.1 ---
 
-// Render dashboard
+// Fetch
 async function fetchStates(){
   const { data, error } = await supabase
     .from('coupon_state')
@@ -195,6 +195,8 @@ async function fetchHabits(lastNDays = 120){
   if(error){ console.error(error); return []; }
   return data;
 }
+
+// Estado cupón
 function computeStatus(coupon, stateRow, habits, allStates){
   if(coupon.tipo === 'sorpresa'){
     return { status: 'en_progreso', progress: 0, usesLeft: 0 };
@@ -205,7 +207,7 @@ function computeStatus(coupon, stateRow, habits, allStates){
     const status = usesLeft>0 ? 'disponible' : 'canjeado';
     return { status, progress: (used/(coupon.max_uses||1))*100, usesLeft };
   }
-  // tipo reto: evaluar elegibilidad
+
   let progressPct = 0;
   const req = coupon.requirements || {};
   function countRedeemed(id){
@@ -214,6 +216,7 @@ function computeStatus(coupon, stateRow, habits, allStates){
   }
   const byDate = new Map(habits.map(h=>[h.date, h]));
   const today = new Date();
+
   function lastConsecutiveHealthy(daysNeeded){
     let count=0;
     for(let i=0;i<200;i++){
@@ -363,51 +366,21 @@ async function renderDashboard(filter="all"){
   }
 }
 
-// Modal contents
-async function openCouponDetail(couponId){
-  const c = COUPONS.find(x=>x.id===couponId);
-  const habits = await fetchHabits(120);
-  const states = await fetchStates();
-  const row = states.find(r=>r.coupon_id===couponId) || { redeemed_count:0 };
-  const comp = computeStatus(c, row, habits, states);
-  let html = `<h3>${c.titulo}</h3><p>${c.descripcion||''}</p>`;
-  if(c.tipo==='reto'){
-    html += `<p><b>Estado:</b> ${statusLabel(comp.status)} · <b>Progreso:</b> ${Math.round(comp.progress)}%</p>`;
-    html += `<p><i>Consejo:</i> Marca tus días saludables y sesiones de ejercicio en la pestaña <b>Hábitos</b>. Esta vista calcula tu elegibilidad automáticamente.</p>`;
-  }
-  if(c.tipo==='directo'){
-    html += `<p><b>Usos restantes:</b> ${comp.usesLeft}</p>`;
-  }
-  if(comp.status==='disponible' && comp.usesLeft>0){
-    html += `<p><button data-action="canjear-final" data-id="${c.id}">Canjear ahora</button></p>`;
-  }
-  openModal(html);
-}
+// ----- LÓGICA DE HÁBITOS -----
 
-async function canjearCoupon(couponId){
-  const { data: row, error } = await supabase
-    .from('coupon_state')
-    .select('*').eq('user_id', sessionUser.id).eq('coupon_id', couponId).single();
-  if(error){ console.error(error); return; }
-  const c = COUPONS.find(x=>x.id===couponId);
-  const used = (row?.redeemed_count||0) + 1;
-  if(used > (c.max_uses||0)){ alert("Llegaste al máximo de canjes."); return; }
-  const { error: upErr } = await supabase.from('coupon_state')
-    .update({ redeemed_count: used, updated_at: new Date().toISOString() })
-    .eq('id', row.id);
-  if(upErr){ console.error(upErr); return; }
-  await renderDashboard(currentFilter);
-  await showRedeemedTicket(c);
-}
-
-async function markToday(kind){
-  const today = todayStr();
+// Marca en la fecha seleccionada (input date)
+async function markForDate(kind, dateStr){
   const { data: existing } = await supabase
-     .from('habit_log').select('*').eq('user_id', sessionUser.id).eq('date', today).maybeSingle();
-  let patch = { user_id: sessionUser.id, date: today };
+     .from('habit_log').select('*')
+     .eq('user_id', sessionUser.id)
+     .eq('date', dateStr)
+     .maybeSingle();
+
+  let patch = { user_id: sessionUser.id, date: dateStr };
   if(kind==='healthy'){ patch.diet = 'healthy'; }
   if(kind==='junk'){ patch.diet = 'junk'; }
   if(kind==='exercise'){ patch.exercise_sessions = (existing?.exercise_sessions||0) + 1; }
+
   if(existing){
     const { error } = await supabase.from('habit_log').update(patch).eq('id', existing.id);
     if(error){ console.error(error); habitMsg.textContent = "Error al guardar"; return; }
@@ -422,20 +395,22 @@ async function markToday(kind){
   await renderHabitIndicators();
 }
 
+// Resumen 4 semanas
 async function renderHabitsSummary(){
   const logs = await fetchHabits(28);
-  // Aggregate per week Mon-Sun
   let byWeek = new Map();
+  const keys = [];
   for(const row of logs){
-    const ws = weekStart(toDate(row.date)).toISOString().slice(0,10);
+    const ws = weekKey(row.date);
+    if(!byWeek.has(ws)) keys.push(ws);
     const obj = byWeek.get(ws) || {healthy:0, junk:0, exercise:0};
     if(row.diet==='healthy') obj.healthy++;
     if(row.diet==='junk') obj.junk++;
     obj.exercise += (row.exercise_sessions||0);
     byWeek.set(ws, obj);
   }
+  keys.sort();
   let html = `<table class="card" style="width:100%"><tr><th>Semana (Lun-Dom)</th><th>Saludable</th><th>Chatarra</th><th>Ejercicio (ses.)</th></tr>`;
-  const keys = Array.from(byWeek.keys()).sort();
   for(const k of keys){
     const v = byWeek.get(k);
     html += `<tr><td>${k}</td><td>${v.healthy}</td><td>${v.junk}</td><td>${v.exercise}</td></tr>`;
@@ -447,19 +422,40 @@ async function renderHabitsSummary(){
   habitsSummary.innerHTML = html;
 }
 
-// Indicadores (derecha)
+// Indicadores (con “1 chatarra por semana no rompe racha saludable”)
 async function renderHabitIndicators(){
-  const logs = await fetchHabits(120); // 4 meses aprox
+  const logs = await fetchHabits(120);
   const byDate = new Map(logs.map(h=>[h.date, h]));
   const today = new Date();
 
-  // Racha saludable (consecutivos) contando solo días con registro saludable
+  // Racha saludable con tolerancia semanal
+  // Mientras vayamos hacia atrás:
+  // - Día 'healthy' => cuenta
+  // - Día 'junk' => permite SOLO si en esa semana aún no se superó 1 junk (contamos por semana hacia atrás)
+  // - Día sin registro => rompe racha
   let healthyStreak = 0;
+  const weekJunkSeen = new Map(); // weekKey -> junkCount encontrado en la racha
   for(let i=0;i<365;i++){
     const d = addDays(today, -i);
     const key = d.toISOString().slice(0,10);
     const row = byDate.get(key);
-    if(row && row.diet==='healthy'){ healthyStreak++; } else { break; }
+    if(!row){ break; }
+    if(row.diet === 'healthy'){
+      healthyStreak++;
+      continue;
+    }
+    if(row.diet === 'junk'){
+      const wk = weekKeyFromDateObj(d);
+      const used = weekJunkSeen.get(wk) || 0;
+      if(used < 1){
+        weekJunkSeen.set(wk, used + 1);
+        healthyStreak++; // no rompe racha
+        continue;
+      }else{
+        break; // ya hay >1 junk en esa semana
+      }
+    }
+    break;
   }
 
   // Racha ejercicio (días consecutivos con >=1 sesión)
@@ -471,7 +467,7 @@ async function renderHabitIndicators(){
     if(row && (row.exercise_sessions||0)>0){ exerciseStreak++; } else { break; }
   }
 
-  // Saludables últimos 30 días
+  // Últimos 30 días
   let healthy30 = 0, exercise30 = 0;
   for(let i=0;i<30;i++){
     const d = addDays(today, -i);
@@ -490,7 +486,7 @@ async function renderHabitIndicators(){
     if(row) exerciseThisWeek += (row.exercise_sessions||0);
   }
 
-  // Semanas consecutivas cumpliendo meta de ejercicio (>=3 sesiones/sem)
+  // Semanas consecutivas cumpliendo meta (>=3 sesiones/sem)
   let weeksInARow = 0;
   for(let w=0; w<26; w++){
     const start = addDays(weekStart(today), -7*w);
@@ -508,12 +504,12 @@ async function renderHabitIndicators(){
     <div class="indicator">
       <h4>Racha saludable</h4>
       <div class="big">${healthyStreak} días</div>
-      <div class="sub">Días consecutivos marcados como saludables</div>
+      <div class="sub">Tolera 1 chatarra/sem sin romper</div>
     </div>
     <div class="indicator">
       <h4>Racha de ejercicio</h4>
       <div class="big">${exerciseStreak} días</div>
-      <div class="sub">Días consecutivos con ≥1 sesión</div>
+      <div class="sub">Días seguidos con ≥1 sesión</div>
     </div>
     <div class="indicator">
       <h4>Últimos 30 días</h4>
@@ -528,19 +524,19 @@ async function renderHabitIndicators(){
     <div class="indicator">
       <h4>Semanas seguidas cumpliendo</h4>
       <div class="big">${weeksInARow}</div>
-      <div class="sub">Semanas consecutivas con ≥3 sesiones</div>
+      <div class="sub">≥3 sesiones/sem consecutivas</div>
     </div>
   `;
 }
 
-// Routing views
+// Routing
 function showDashboard(){ show(dashboardView); hide(habitsView); hide(financeView); }
 function showHabits(){ hide(dashboardView); show(habitsView); hide(financeView); }
 function showFinance(){ hide(dashboardView); hide(habitsView); show(financeView); }
 
 let currentFilter = "all";
 filterBtns.forEach(btn=>{
-  btn.addEventListener('click', e=>{
+  btn.addEventListener('click', ()=>{
     filterBtns.forEach(b=>b.classList.remove('selected'));
     btn.classList.add('selected');
     currentFilter = btn.getAttribute('data-filter');
@@ -548,7 +544,7 @@ filterBtns.forEach(btn=>{
   });
 });
 
-// Events
+// Eventos
 loginBtn.addEventListener('click', async ()=>{
   loginMsg.textContent = "Conectando...";
   const u = document.getElementById('username').value.trim();
@@ -558,6 +554,7 @@ loginBtn.addEventListener('click', async ()=>{
     hide(loginSection); show(appSection);
     await loadCoupons();
     await bootstrapCouponState();
+    if(habitDateInput) habitDateInput.value = todayStr();
     await renderDashboard(currentFilter);
     await renderHabitsSummary();
     await renderHabitIndicators();
@@ -579,6 +576,7 @@ navHabits.addEventListener('click', async ()=>{
 });
 navFinance.addEventListener('click', showFinance);
 
+// Clicks en cupones
 couponsGrid.addEventListener('click', async (e)=>{
   const btn = e.target.closest('button');
   if(!btn) return;
@@ -598,12 +596,22 @@ couponsGrid.addEventListener('click', async (e)=>{
 modalClose.addEventListener('click', closeModal);
 modal.addEventListener('click', (e)=>{ if(e.target===modal) closeModal(); });
 
-document.getElementById('mark-healthy').addEventListener('click', ()=>markToday('healthy'));
-document.getElementById('mark-junk').addEventListener('click', ()=>markToday('junk'));
-document.getElementById('add-exercise').addEventListener('click', ()=>markToday('exercise'));
+// Marcación usando la fecha seleccionada
+document.getElementById('mark-healthy').addEventListener('click', ()=>{
+  const dateStr = habitDateInput?.value || todayStr();
+  markForDate('healthy', dateStr);
+});
+document.getElementById('mark-junk').addEventListener('click', ()=>{
+  const dateStr = habitDateInput?.value || todayStr();
+  markForDate('junk', dateStr);
+});
+document.getElementById('add-exercise').addEventListener('click', ()=>{
+  const dateStr = habitDateInput?.value || todayStr();
+  markForDate('exercise', dateStr);
+});
 resetHabitsBtn.addEventListener('click', resetHabits);
 
-// Session check on load
+// Init
 (async function init(){
   await loadCoupons();
   const { data: { user } } = await supabase.auth.getUser();
@@ -611,6 +619,7 @@ resetHabitsBtn.addEventListener('click', resetHabits);
     sessionUser = user;
     hide(loginSection); show(appSection);
     await bootstrapCouponState();
+    if(habitDateInput) habitDateInput.value = todayStr();
     await renderDashboard(currentFilter);
     await renderHabitsSummary();
     await renderHabitIndicators();
