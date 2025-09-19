@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>¡Feliz Cumpleaños!</title>
   <link rel="stylesheet" href="./css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
   <header class="hero">
@@ -82,12 +83,58 @@
       </div>
 
       <div id="finance-view" class="view hidden">
-        <div class="card" style="max-width:540px">
-          <h2>Finanzas</h2>
-          <p>En construcción, próximamente.</p>
-        </div>
-      </div>
+  <div class="card" style="max-width:1100px">
+    <h2>Finanzas</h2>
 
+    <div class="row" style="align-items:center;flex-wrap:wrap">
+      <label>Mes</label>
+      <input id="fin-month" type="month" />
+      <button id="fin-refresh">Actualizar</button>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-title">Gasto total (S/)</div><div id="kpi-total" class="kpi-value">0.00</div></div>
+      <div class="kpi"><div class="kpi-title">Promedio diario (S/)</div><div id="kpi-avg" class="kpi-value">0.00</div></div>
+      <div class="kpi"><div class="kpi-title">Transacciones</div><div id="kpi-count" class="kpi-value">0</div></div>
+      <div class="kpi"><div class="kpi-title">Presupuesto (S/)</div>
+        <div class="kpi-value"><input id="fin-budget" type="number" step="0.01" placeholder="0.00" style="max-width:140px"></div>
+      </div>
+      <div class="kpi"><div class="kpi-title">Restante (S/)</div><div id="kpi-remaining" class="kpi-value">0.00</div></div>
+    </div>
+
+    <div class="row" style="flex-wrap:wrap">
+      <button id="fin-save-budget" class="secondary">Guardar presupuesto de mes</button>
+    </div>
+
+    <div class="charts">
+      <div class="chart-card">
+        <h3>Gasto por categoría</h3>
+        <canvas id="chart-pie"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Gasto por día</h3>
+        <canvas id="chart-bars"></canvas>
+      </div>
+    </div>
+
+    <div class="card" style="max-width:none">
+      <h3>Movimientos</h3>
+      <div class="row" style="flex-wrap:wrap">
+        <select id="fin-filter-cat">
+          <option value="">Todas las categorías</option>
+          <option>Comida</option>
+          <option>Transporte</option>
+          <option>Ocio</option>
+          <option>Salud</option>
+          <option>Otros</option>
+        </select>
+        <input id="fin-filter-text" type="text" placeholder="Buscar en descripción...">
+        <button id="fin-apply-filter">Filtrar</button>
+      </div>
+      <div id="fin-table"></div>
+    </div>
+  </div>
+</div>
       <div id="modal" class="modal hidden">
         <div class="modal-content">
           <span id="modal-close">&times;</span>
