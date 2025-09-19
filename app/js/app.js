@@ -27,11 +27,14 @@ const loginMsg = document.getElementById('login-msg');
 const logoutBtn = document.getElementById('logout-btn');
 const navDashboard = document.getElementById('nav-dashboard');
 const navHabits = document.getElementById('nav-habits');
+const navFinance = document.getElementById('nav-finance');
 const dashboardView = document.getElementById('dashboard-view');
 const habitsView = document.getElementById('habits-view');
+const financeView = document.getElementById('finance-view');
 const couponsGrid = document.getElementById('coupons-grid');
 const habitMsg = document.getElementById('habit-msg');
 const habitsSummary = document.getElementById('habits-summary');
+const habitIndicators = document.getElementById('habit-indicators');
 const filterBtns = document.querySelectorAll('.filters .chip');
 const modal = document.getElementById('modal');
 const modalBody = document.getElementById('modal-body');
@@ -51,7 +54,6 @@ async function loadCoupons(){
 // coupon_state: id uuid pk, user_id uuid, coupon_id text, redeemed_count int, created_at, updated_at
 
 async function ensureTablesNotes(){
-  // Friendly reminder only
   console.log("Asegúrate de haber creado las tablas habit_log y coupon_state con RLS.");
 }
 
@@ -93,20 +95,22 @@ function hide(el){ el.classList.add('hidden'); }
 function openModal(html){ modalBody.innerHTML = html; show(modal); }
 function closeModal(){ hide(modal); }
 
-// --- EXTRAS v2 ---
+// --- EXTRAS v2.1 ---
 // Resetear hábitos (borra todas las filas del usuario en habit_log)
 async function resetHabits(){
   if(!confirm('¿Seguro que quieres reiniciar todos los hábitos? Esta acción no se puede deshacer.')) return;
   const { error } = await supabase.from('habit_log').delete().eq('user_id', sessionUser.id);
   if(error){ console.error(error); habitMsg.textContent = 'Error al reiniciar.'; return; }
   habitMsg.textContent = 'Hábitos reiniciados ✔️';
+  // Refrescar vistas para que el resumen/indicadores queden en 0
   await renderDashboard(currentFilter);
   await renderHabitsSummary();
+  await renderHabitIndicators();
 }
 
 // Reiniciar usos de un cupón con contraseña
 async function resetCouponUses(couponId){
-  const pass = prompt("Contraseña para reiniciar (indicada por Junior):");
+  const pass = prompt("Contraseña para reiniciar");
   if(pass !== "jv082000"){ alert("Contraseña incorrecta."); return; }
   const { data: row, error } = await supabase
     .from('coupon_state')
@@ -120,7 +124,7 @@ async function resetCouponUses(couponId){
   alert("Cupón reiniciado a 0 usos.");
 }
 
-// Ticket con imagen compartible (Web Share API si está disponible)
+// Ticket con imagen compartible (sin mensaje extra)
 async function showRedeemedTicket(coupon){
   const date = new Date().toLocaleString();
   const modalHtml = `
@@ -146,14 +150,9 @@ async function showRedeemedTicket(coupon){
   ctx.font = '28px system-ui';
   ctx.fillText('Cupón canjeado', 30, 60);
   ctx.font = 'bold 34px system-ui';
-  ctx.fillText(coupon.titulo.substring(0,30), 30, 120);
+  ctx.fillText(coupon.titulo.substring(0,34), 30, 120);
   ctx.font = '22px system-ui';
   ctx.fillText(`Fecha: ${date}`, 30, 170);
-  ctx.fillStyle = '#C57B57';
-  ctx.fillRect(30, 290, 660, 60);
-  ctx.fillStyle = '#fff';
-  ctx.font = '24px system-ui';
-  ctx.fillText('Con cariño 💛', 40, 330);
 
   const dataURL = canvas.toDataURL('image/png');
   const dl = document.getElementById('btn-download');
@@ -170,12 +169,11 @@ async function showRedeemedTicket(coupon){
         return;
       }
     }catch(e){ /* fallback abajo */ }
-    // Fallback: WhatsApp con texto (la imagen puedes adjuntarla manualmente si el navegador no soporta compartir archivos)
     const url = 'https://wa.me/?text=' + encodeURIComponent(text);
     window.open(url, '_blank');
   });
 }
-// --- FIN EXTRAS v2 ---
+// --- FIN EXTRAS v2.1 ---
 
 // Render dashboard
 async function fetchStates(){
@@ -207,14 +205,13 @@ function computeStatus(coupon, stateRow, habits, allStates){
     const status = usesLeft>0 ? 'disponible' : 'canjeado';
     return { status, progress: (used/(coupon.max_uses||1))*100, usesLeft };
   }
-  // tipo reto: evaluar elegibilidad básica
+  // tipo reto: evaluar elegibilidad
   let progressPct = 0;
   const req = coupon.requirements || {};
   function countRedeemed(id){
     const r = allStates.find(s=>s.coupon_id===id);
     return r? (r.redeemed_count||0) : 0;
   }
-  // Helpers for habits
   const byDate = new Map(habits.map(h=>[h.date, h]));
   const today = new Date();
   function lastConsecutiveHealthy(daysNeeded){
@@ -257,7 +254,6 @@ function computeStatus(coupon, stateRow, habits, allStates){
     return true;
   }
   function exercisePerWeekOk(weeks, perWeek){
-    // need last N consecutive weeks each >= perWeek
     const start = weekStart(addDays(today, -7*(weeks-1)));
     let w = new Date(start);
     for(let k=0;k<weeks;k++){
@@ -401,13 +397,11 @@ async function canjearCoupon(couponId){
     .eq('id', row.id);
   if(upErr){ console.error(upErr); return; }
   await renderDashboard(currentFilter);
-  // Mostrar ticket para compartir/descargar (v2)
   await showRedeemedTicket(c);
 }
 
 async function markToday(kind){
   const today = todayStr();
-  // upsert by date
   const { data: existing } = await supabase
      .from('habit_log').select('*').eq('user_id', sessionUser.id).eq('date', today).maybeSingle();
   let patch = { user_id: sessionUser.id, date: today };
@@ -425,6 +419,7 @@ async function markToday(kind){
   habitMsg.textContent = "Guardado ✔️";
   await renderDashboard(currentFilter);
   await renderHabitsSummary();
+  await renderHabitIndicators();
 }
 
 async function renderHabitsSummary(){
@@ -445,13 +440,103 @@ async function renderHabitsSummary(){
     const v = byWeek.get(k);
     html += `<tr><td>${k}</td><td>${v.healthy}</td><td>${v.junk}</td><td>${v.exercise}</td></tr>`;
   }
+  if(keys.length===0){
+    html += `<tr><td colspan="4" style="text-align:center;color:#6a5e52">Sin datos. ¡Empieza hoy! ✨</td></tr>`;
+  }
   html += `</table>`;
   habitsSummary.innerHTML = html;
 }
 
+// Indicadores (derecha)
+async function renderHabitIndicators(){
+  const logs = await fetchHabits(120); // 4 meses aprox
+  const byDate = new Map(logs.map(h=>[h.date, h]));
+  const today = new Date();
+
+  // Racha saludable (consecutivos) contando solo días con registro saludable
+  let healthyStreak = 0;
+  for(let i=0;i<365;i++){
+    const d = addDays(today, -i);
+    const key = d.toISOString().slice(0,10);
+    const row = byDate.get(key);
+    if(row && row.diet==='healthy'){ healthyStreak++; } else { break; }
+  }
+
+  // Racha ejercicio (días consecutivos con >=1 sesión)
+  let exerciseStreak = 0;
+  for(let i=0;i<365;i++){
+    const d = addDays(today, -i);
+    const key = d.toISOString().slice(0,10);
+    const row = byDate.get(key);
+    if(row && (row.exercise_sessions||0)>0){ exerciseStreak++; } else { break; }
+  }
+
+  // Saludables últimos 30 días
+  let healthy30 = 0, exercise30 = 0;
+  for(let i=0;i<30;i++){
+    const d = addDays(today, -i);
+    const key = d.toISOString().slice(0,10);
+    const row = byDate.get(key);
+    if(row && row.diet==='healthy') healthy30++;
+    if(row) exercise30 += (row.exercise_sessions||0);
+  }
+
+  // Ejercicio esta semana (Lun-Dom)
+  const ws = weekStart(today);
+  let exerciseThisWeek = 0;
+  for(let d = new Date(ws); d <= addDays(ws,6); d = addDays(d,1)){
+    const key = d.toISOString().slice(0,10);
+    const row = byDate.get(key);
+    if(row) exerciseThisWeek += (row.exercise_sessions||0);
+  }
+
+  // Semanas consecutivas cumpliendo meta de ejercicio (>=3 sesiones/sem)
+  let weeksInARow = 0;
+  for(let w=0; w<26; w++){
+    const start = addDays(weekStart(today), -7*w);
+    const end = addDays(start, 6);
+    let cnt = 0;
+    for(let d = new Date(start); d <= end; d = addDays(d,1)){
+      const key = d.toISOString().slice(0,10);
+      const row = byDate.get(key);
+      if(row) cnt += (row.exercise_sessions||0);
+    }
+    if(cnt >= 3){ weeksInARow++; } else { break; }
+  }
+
+  habitIndicators.innerHTML = `
+    <div class="indicator">
+      <h4>Racha saludable</h4>
+      <div class="big">${healthyStreak} días</div>
+      <div class="sub">Días consecutivos marcados como saludables</div>
+    </div>
+    <div class="indicator">
+      <h4>Racha de ejercicio</h4>
+      <div class="big">${exerciseStreak} días</div>
+      <div class="sub">Días consecutivos con ≥1 sesión</div>
+    </div>
+    <div class="indicator">
+      <h4>Últimos 30 días</h4>
+      <div class="big">${healthy30} saludables · ${exercise30} ses.</div>
+      <div class="sub">Balance del último mes</div>
+    </div>
+    <div class="indicator">
+      <h4>Ejercicio esta semana</h4>
+      <div class="big">${exerciseThisWeek} ses.</div>
+      <div class="sub">Objetivo: 3 por semana</div>
+    </div>
+    <div class="indicator">
+      <h4>Semanas seguidas cumpliendo</h4>
+      <div class="big">${weeksInARow}</div>
+      <div class="sub">Semanas consecutivas con ≥3 sesiones</div>
+    </div>
+  `;
+}
+
 // Routing views
-function showDashboard(){ show(dashboardView); hide(habitsView); }
-function showHabits(){ hide(dashboardView); show(habitsView); }
+function showDashboard(){ show(dashboardView); hide(habitsView); hide(financeView); }
+function showHabits(){ hide(dashboardView); show(habitsView); hide(financeView); }
+function showFinance(){ hide(dashboardView); hide(habitsView); show(financeView); }
 
 let currentFilter = "all";
 filterBtns.forEach(btn=>{
@@ -475,6 +560,7 @@ loginBtn.addEventListener('click', async ()=>{
     await bootstrapCouponState();
     await renderDashboard(currentFilter);
     await renderHabitsSummary();
+    await renderHabitIndicators();
     loginMsg.textContent = "";
   }catch(err){
     console.error(err);
@@ -486,8 +572,14 @@ logoutBtn.addEventListener('click', async ()=>{
   show(loginSection); hide(appSection);
 });
 navDashboard.addEventListener('click', showDashboard);
-navHabits.addEventListener('click', showHabits);
+navHabits.addEventListener('click', async ()=>{
+  showHabits();
+  await renderHabitsSummary();
+  await renderHabitIndicators();
+});
+navFinance.addEventListener('click', showFinance);
 
+const couponsGrid = document.getElementById('coupons-grid');
 couponsGrid.addEventListener('click', async (e)=>{
   const btn = e.target.closest('button');
   if(!btn) return;
@@ -522,6 +614,7 @@ resetHabitsBtn.addEventListener('click', resetHabits);
     await bootstrapCouponState();
     await renderDashboard(currentFilter);
     await renderHabitsSummary();
+    await renderHabitIndicators();
   }else{
     show(loginSection); hide(appSection);
   }
