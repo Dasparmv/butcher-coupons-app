@@ -31,6 +31,7 @@
         <div class="actions">
           <button id="nav-dashboard">Tablero</button>
           <button id="nav-habits">Hábitos</button>
+          <button id="nav-finance">Finanzas</button>
           <button id="logout-btn">Salir</button>
         </div>
       </nav>
@@ -47,19 +48,41 @@
 
       <div id="habits-view" class="view hidden">
         <h2>Hábitos</h2>
-        <div class="card">
-          <h3>Hoy</h3>
-          <div class="row">
-            <button id="mark-healthy">Marcar día saludable ✅</button>
-            <button id="mark-junk">Marcar chatarra 🍟</button>
-            <button id="add-exercise">Agregar sesión de ejercicio 🏃</button>
-            <button id="reset-habits" class="secondary">Reiniciar hábitos ↺</button>
+
+        <div class="cols">
+          <!-- Columna izquierda -->
+          <div>
+            <div class="card">
+              <h3>Hoy</h3>
+              <div class="row">
+                <button id="mark-healthy">Marcar día saludable ✅</button>
+                <button id="mark-junk">Marcar chatarra 🍟</button>
+                <button id="add-exercise">Agregar sesión de ejercicio 🏃</button>
+                <button id="reset-habits" class="secondary">Reiniciar hábitos ↺</button>
+              </div>
+              <div id="habit-msg" class="msg"></div>
+            </div>
+
+            <div class="card">
+              <h3>Resumen (últimas 4 semanas)</h3>
+              <div id="habits-summary"></div>
+            </div>
           </div>
-          <div id="habit-msg" class="msg"></div>
+
+          <!-- Columna derecha (indicadores) -->
+          <aside>
+            <div class="card">
+              <h3>Indicadores</h3>
+              <div id="habit-indicators" class="indicators"></div>
+            </div>
+          </aside>
         </div>
-        <div class="card">
-          <h3>Resumen (últimas 4 semanas)</h3>
-          <div id="habits-summary"></div>
+      </div>
+
+      <div id="finance-view" class="view hidden">
+        <div class="card" style="max-width:540px">
+          <h2>Finanzas</h2>
+          <p>En construcción, próximamente.</p>
         </div>
       </div>
 
@@ -79,3 +102,4 @@
   <script src="./js/app.js"></script>
 </body>
 </html>
+
