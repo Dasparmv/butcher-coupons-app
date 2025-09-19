@@ -54,3 +54,17 @@ button.secondary{background:#b59d7a}
 .modal-content{background:white;border-radius:12px;max-width:520px;width:92%;padding:16px;position:relative}
 #modal-close{position:absolute;right:12px;top:8px;cursor:pointer;font-size:20px}
 footer{padding:24px;text-align:center;color:#6a5e52}
+
+/* Mini reset button 'R' on coupon cards */
+.coupon .mini-reset{
+  position:absolute;left:10px;top:10px;
+  background:transparent;color:#b03a2e;border:1px solid #b03a2e;
+  width:22px;height:22px;border-radius:50%;font-weight:700;line-height:20px;
+  padding:0;text-align:center;font-size:12px;
+}
+.coupon .mini-reset:hover{background:#ffeaea}
+.share-actions button{margin-top:8px}
+.ticket{
+  border:2px dashed var(--dorado);padding:16px;border-radius:12px;background:#fffdf5
+}
+.ticket h3{margin-top:0}
