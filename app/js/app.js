@@ -1,17 +1,17 @@
-// Load config
+// ===== Supabase config =====
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Helpers fecha
+// ===== Date helpers =====
 function todayStr(){
   const d = new Date();
   const off = d.getTimezoneOffset();
   const local = new Date(d.getTime() - off*60000);
   return local.toISOString().slice(0,10);
 }
-function weekStart(d){ // Lunes
+function weekStart(d){ // Monday
   const date = new Date(d);
-  const day = (date.getDay()+6)%7; // 0=Mon ... 6=Sun
+  const day = (date.getDay()+6)%7;
   date.setDate(date.getDate() - day);
   date.setHours(0,0,0,0);
   return date;
@@ -21,45 +21,67 @@ function toDate(str){ return new Date(str + "T00:00:00"); }
 function weekKeyFromDateObj(d){ return weekStart(d).toISOString().slice(0,10); }
 function weekKey(dateStr){ return weekKeyFromDateObj(toDate(dateStr)); }
 
-// DOM
+// ===== DOM =====
 const loginSection = document.getElementById('login-section');
 const appSection = document.getElementById('app-section');
 const loginBtn = document.getElementById('login-btn');
 const loginMsg = document.getElementById('login-msg');
 const logoutBtn = document.getElementById('logout-btn');
+
 const navDashboard = document.getElementById('nav-dashboard');
 const navHabits = document.getElementById('nav-habits');
 const navFinance = document.getElementById('nav-finance');
+
 const dashboardView = document.getElementById('dashboard-view');
 const habitsView = document.getElementById('habits-view');
 const financeView = document.getElementById('finance-view');
+
 const couponsGrid = document.getElementById('coupons-grid');
+
 const habitMsg = document.getElementById('habit-msg');
 const habitsSummary = document.getElementById('habits-summary');
 const habitIndicators = document.getElementById('habit-indicators');
-const filterBtns = document.querySelectorAll('.filters .chip');
-const modal = document.getElementById('modal');
-const modalBody = document.getElementById('modal-body');
-const modalClose = document.getElementById('modal-close');
 const resetHabitsBtn = document.getElementById('reset-habits');
 const habitDateInput = document.getElementById('habit-date');
 
+const filterBtns = document.querySelectorAll('.filters .chip');
+
+const modal = document.getElementById('modal');
+const modalBody = document.getElementById('modal-body');
+const modalClose = document.getElementById('modal-close');
+
+// Finanzas
+const finMonth = document.getElementById('fin-month');
+const finRefresh = document.getElementById('fin-refresh');
+const finBudget = document.getElementById('fin-budget');
+const finSaveBudget = document.getElementById('fin-save-budget');
+const kpiTotal = document.getElementById('kpi-total');
+const kpiAvg = document.getElementById('kpi-avg');
+const kpiCount = document.getElementById('kpi-count');
+const kpiRemaining = document.getElementById('kpi-remaining');
+const finFilterCat = document.getElementById('fin-filter-cat');
+const finFilterText = document.getElementById('fin-filter-text');
+const finApplyFilter = document.getElementById('fin-apply-filter');
+const finTable = document.getElementById('fin-table');
+
+let chartPie = null, chartBars = null;
+
+// ===== State =====
 let COUPONS = [];
 let sessionUser = null;
+let currentFilter = "all";
 
+// ===== Data load =====
 async function loadCoupons(){
   const res = await fetch('./data/coupons.json');
   COUPONS = await res.json();
 }
 
-// Supabase tables:
-// habit_log: id uuid pk, user_id uuid, date date, diet text, exercise_sessions int, created_at
-// coupon_state: id uuid pk, user_id uuid, coupon_id text, redeemed_count int, created_at, updated_at
-
+// ===== Auth =====
 async function signIn(username, password){
   const email = `${username}@local.test`;
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if(error){ throw error; }
+  if(error) throw error;
   sessionUser = data.user;
   return data.user;
 }
@@ -68,7 +90,7 @@ async function signOut(){
   sessionUser = null;
 }
 
-// Bootstrap coupon_state rows si faltan
+// ===== Tables bootstrap =====
 async function bootstrapCouponState(){
   const { data: rows, error } = await supabase
    .from('coupon_state')
@@ -88,94 +110,13 @@ async function bootstrapCouponState(){
   }
 }
 
-// UI helpers
-function show(el){ el.classList.remove('hidden'); }
-function hide(el){ el.classList.add('hidden'); }
+// ===== UI helpers =====
+function show(el){ el?.classList.remove('hidden'); }
+function hide(el){ el?.classList.add('hidden'); }
 function openModal(html){ modalBody.innerHTML = html; show(modal); }
 function closeModal(){ hide(modal); }
 
-// --- RESET HÁBITOS ---
-async function resetHabits(){
-  if(!confirm('¿Seguro que quieres reiniciar todos los hábitos? Esta acción no se puede deshacer.')) return;
-  const { error } = await supabase.from('habit_log').delete().eq('user_id', sessionUser.id);
-  if(error){
-    console.error(error);
-    habitMsg.textContent = 'Error al reiniciar. Revisa que tengas la política DELETE en Supabase.';
-    return;
-  }
-  habitMsg.textContent = 'Hábitos reiniciados ✔️';
-  // Refrescar todo
-  await renderDashboard(currentFilter);
-  await renderHabitsSummary();
-  await renderHabitIndicators();
-}
-
-// Reiniciar usos de un cupón (con clave)
-async function resetCouponUses(couponId){
-  const pass = prompt("Contraseña para reiniciar");
-  if(pass !== "jv082000"){ alert("Contraseña incorrecta."); return; }
-  const { data: row, error } = await supabase
-    .from('coupon_state')
-    .select('*').eq('user_id', sessionUser.id).eq('coupon_id', couponId).single();
-  if(error){ console.error(error); return; }
-  const { error: upErr } = await supabase.from('coupon_state')
-    .update({ redeemed_count: 0, updated_at: new Date().toISOString() })
-    .eq('id', row.id);
-  if(upErr){ console.error(upErr); alert("No se pudo reiniciar."); return; }
-  await renderDashboard(currentFilter);
-  alert("Cupón reiniciado a 0 usos.");
-}
-
-// Ticket (sin texto extra)
-async function showRedeemedTicket(coupon){
-  const date = new Date().toLocaleString();
-  const modalHtml = `
-    <div class="ticket">
-      <h3>${coupon.titulo}</h3>
-      <p>Canjeado el: ${date}</p>
-      <canvas id="ticket-canvas" width="720" height="400" style="width:100%;max-width:720px;"></canvas>
-      <div class="share-actions">
-        <button id="btn-share">Compartir por WhatsApp</button>
-        <a id="btn-download" class="secondary" download="cupon-${coupon.id}.png">Descargar imagen</a>
-      </div>
-    </div>
-  `;
-  openModal(modalHtml);
-
-  const canvas = document.getElementById('ticket-canvas');
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#FAF4E6'; ctx.fillRect(0,0,720,400);
-  ctx.strokeStyle = '#C9A227'; ctx.lineWidth = 6; ctx.setLineDash([12,8]); ctx.strokeRect(10,10,700,380);
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#6B4F3A';
-  ctx.font = '28px system-ui';
-  ctx.fillText('Cupón canjeado', 30, 60);
-  ctx.font = 'bold 34px system-ui';
-  ctx.fillText(coupon.titulo.substring(0,34), 30, 120);
-  ctx.font = '22px system-ui';
-  ctx.fillText(`Fecha: ${date}`, 30, 170);
-
-  const dataURL = canvas.toDataURL('image/png');
-  const dl = document.getElementById('btn-download');
-  dl.href = dataURL;
-
-  document.getElementById('btn-share').addEventListener('click', async ()=>{
-    const text = `¡Canjeado! ${coupon.titulo} • ${date}`;
-    try{
-      const res = await fetch(dataURL);
-      const blob = await res.blob();
-      const file = new File([blob], `cupon-${coupon.id}.png`, { type: 'image/png' });
-      if(navigator.canShare && navigator.canShare({ files: [file] })){
-        await navigator.share({ files:[file], title:'Cupón canjeado', text });
-        return;
-      }
-    }catch(e){}
-    const url = 'https://wa.me/?text=' + encodeURIComponent(text);
-    window.open(url, '_blank');
-  });
-}
-
-// Fetch
+// ===== Habits: fetch =====
 async function fetchStates(){
   const { data, error } = await supabase
     .from('coupon_state')
@@ -196,18 +137,20 @@ async function fetchHabits(lastNDays = 120){
   return data;
 }
 
-// Estado cupón
+// ===== Coupons status =====
 function computeStatus(coupon, stateRow, habits, allStates){
   if(coupon.tipo === 'sorpresa'){
     return { status: 'en_progreso', progress: 0, usesLeft: 0 };
   }
   const used = stateRow?.redeemed_count || 0;
   const usesLeft = Math.max(0, (coupon.max_uses||0) - used);
+
   if(coupon.tipo === 'directo'){
     const status = usesLeft>0 ? 'disponible' : 'canjeado';
     return { status, progress: (used/(coupon.max_uses||1))*100, usesLeft };
   }
 
+  // retos
   let progressPct = 0;
   const req = coupon.requirements || {};
   function countRedeemed(id){
@@ -336,6 +279,7 @@ function statusLabel(s){
   return s;
 }
 
+// ===== Dashboard render =====
 async function renderDashboard(filter="all"){
   const states = await fetchStates();
   const habits = await fetchHabits(120);
@@ -366,9 +310,123 @@ async function renderDashboard(filter="all"){
   }
 }
 
-// ----- LÓGICA DE HÁBITOS -----
+// ===== Modales de cupón =====
+async function openCouponDetail(couponId){
+  const c = COUPONS.find(x=>x.id===couponId);
+  const habits = await fetchHabits(120);
+  const states = await fetchStates();
+  const row = states.find(r=>r.coupon_id===couponId) || { redeemed_count:0 };
+  const comp = computeStatus(c, row, habits, states);
+  let html = `<h3>${c.titulo}</h3><p>${c.descripcion||''}</p>`;
+  if(c.tipo==='reto'){
+    html += `<p><b>Estado:</b> ${statusLabel(comp.status)} · <b>Progreso:</b> ${Math.round(comp.progress)}%</p>
+             <p><i>Consejo:</i> Marca tus días en <b>Hábitos</b>. El sistema calcula tu elegibilidad.</p>`;
+  }
+  if(c.tipo==='directo'){
+    html += `<p><b>Usos restantes:</b> ${comp.usesLeft}</p>`;
+  }
+  if(comp.status==='disponible' && comp.usesLeft>0){
+    html += `<p><button data-action="canjear-final" data-id="${c.id}">Canjear ahora</button></p>`;
+  }
+  openModal(html);
+}
 
-// Marca en la fecha seleccionada (input date)
+async function canjearCoupon(couponId){
+  const { data: row, error } = await supabase
+    .from('coupon_state')
+    .select('*').eq('user_id', sessionUser.id).eq('coupon_id', couponId).single();
+  if(error){ console.error(error); return; }
+  const c = COUPONS.find(x=>x.id===couponId);
+  const used = (row?.redeemed_count||0) + 1;
+  if(used > (c.max_uses||0)){ alert("Llegaste al máximo de canjes."); return; }
+  const { error: upErr } = await supabase.from('coupon_state')
+    .update({ redeemed_count: used, updated_at: new Date().toISOString() })
+    .eq('id', row.id);
+  if(upErr){ console.error(upErr); return; }
+  await renderDashboard(currentFilter);
+  await showRedeemedTicket(c);
+}
+
+// ===== Tickets (share/descargar) =====
+async function showRedeemedTicket(coupon){
+  const date = new Date().toLocaleString();
+  const modalHtml = `
+    <div class="ticket">
+      <h3>${coupon.titulo}</h3>
+      <p>Canjeado el: ${date}</p>
+      <canvas id="ticket-canvas" width="720" height="400" style="width:100%;max-width:720px;"></canvas>
+      <div class="share-actions">
+        <button id="btn-share">Compartir por WhatsApp</button>
+        <a id="btn-download" class="secondary" download="cupon-${coupon.id}.png">Descargar imagen</a>
+      </div>
+    </div>
+  `;
+  openModal(modalHtml);
+
+  const canvas = document.getElementById('ticket-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FAF4E6'; ctx.fillRect(0,0,720,400);
+  ctx.strokeStyle = '#C9A227'; ctx.lineWidth = 6; ctx.setLineDash([12,8]); ctx.strokeRect(10,10,700,380);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#6B4F3A';
+  ctx.font = '28px system-ui';
+  ctx.fillText('Cupón canjeado', 30, 60);
+  ctx.font = 'bold 34px system-ui';
+  ctx.fillText(coupon.titulo.substring(0,34), 30, 120);
+  ctx.font = '22px system-ui';
+  ctx.fillText(`Fecha: ${date}`, 30, 170);
+
+  const dataURL = canvas.toDataURL('image/png');
+  const dl = document.getElementById('btn-download');
+  dl.href = dataURL;
+
+  document.getElementById('btn-share').addEventListener('click', async ()=>{
+    const text = `¡Canjeado! ${coupon.titulo} • ${date}`;
+    try{
+      const res = await fetch(dataURL);
+      const blob = await res.blob();
+      const file = new File([blob], `cupon-${coupon.id}.png`, { type: 'image/png' });
+      if(navigator.canShare && navigator.canShare({ files: [file] })){
+        await navigator.share({ files:[file], title:'Cupón canjeado', text });
+        return;
+      }
+    }catch(e){}
+    const url = 'https://wa.me/?text=' + encodeURIComponent(text);
+    window.open(url, '_blank');
+  });
+}
+
+// ===== Habits actions =====
+async function resetHabits(){
+  if(!confirm('¿Seguro que quieres reiniciar todos los hábitos? Esta acción no se puede deshacer.')) return;
+  const { error } = await supabase.from('habit_log').delete().eq('user_id', sessionUser.id);
+  if(error){
+    console.error(error);
+    habitMsg.textContent = 'Error al reiniciar. Revisa la política DELETE en Supabase.';
+    return;
+  }
+  habitMsg.textContent = 'Hábitos reiniciados ✔️';
+  await renderDashboard(currentFilter);
+  await renderHabitsSummary();
+  await renderHabitIndicators();
+}
+
+async function resetCouponUses(couponId){
+  const pass = prompt("Contraseña para reiniciar");
+  if(pass !== "jv082000"){ alert("Contraseña incorrecta."); return; }
+  const { data: row, error } = await supabase
+    .from('coupon_state')
+    .select('*').eq('user_id', sessionUser.id).eq('coupon_id', couponId).single();
+  if(error){ console.error(error); return; }
+  const { error: upErr } = await supabase.from('coupon_state')
+    .update({ redeemed_count: 0, updated_at: new Date().toISOString() })
+    .eq('id', row.id);
+  if(upErr){ console.error(upErr); alert("No se pudo reiniciar."); return; }
+  await renderDashboard(currentFilter);
+  alert("Cupón reiniciado a 0 usos.");
+}
+
+// Marca hábitos para fecha seleccionada
 async function markForDate(kind, dateStr){
   const { data: existing } = await supabase
      .from('habit_log').select('*')
@@ -395,7 +453,7 @@ async function markForDate(kind, dateStr){
   await renderHabitIndicators();
 }
 
-// Resumen 4 semanas
+// ===== Habits summary & indicators =====
 async function renderHabitsSummary(){
   const logs = await fetchHabits(28);
   let byWeek = new Map();
@@ -422,24 +480,19 @@ async function renderHabitsSummary(){
   habitsSummary.innerHTML = html;
 }
 
-// Indicadores (con “1 chatarra por semana no rompe racha saludable”)
 async function renderHabitIndicators(){
   const logs = await fetchHabits(120);
   const byDate = new Map(logs.map(h=>[h.date, h]));
   const today = new Date();
 
-  // Racha saludable con tolerancia semanal
-  // Mientras vayamos hacia atrás:
-  // - Día 'healthy' => cuenta
-  // - Día 'junk' => permite SOLO si en esa semana aún no se superó 1 junk (contamos por semana hacia atrás)
-  // - Día sin registro => rompe racha
+  // Racha saludable: tolera 1 chatarra por semana sin romper
   let healthyStreak = 0;
-  const weekJunkSeen = new Map(); // weekKey -> junkCount encontrado en la racha
+  const weekJunkSeen = new Map(); // weekKey -> junkCount dentro de la racha
   for(let i=0;i<365;i++){
     const d = addDays(today, -i);
     const key = d.toISOString().slice(0,10);
     const row = byDate.get(key);
-    if(!row){ break; }
+    if(!row) break;
     if(row.diet === 'healthy'){
       healthyStreak++;
       continue;
@@ -449,16 +502,16 @@ async function renderHabitIndicators(){
       const used = weekJunkSeen.get(wk) || 0;
       if(used < 1){
         weekJunkSeen.set(wk, used + 1);
-        healthyStreak++; // no rompe racha
+        healthyStreak++;
         continue;
       }else{
-        break; // ya hay >1 junk en esa semana
+        break; // 2ª chatarra en esa semana rompe
       }
     }
     break;
   }
 
-  // Racha ejercicio (días consecutivos con >=1 sesión)
+  // Racha de ejercicio (días consecutivos con ≥1 sesión)
   let exerciseStreak = 0;
   for(let i=0;i<365;i++){
     const d = addDays(today, -i);
@@ -477,7 +530,7 @@ async function renderHabitIndicators(){
     if(row) exercise30 += (row.exercise_sessions||0);
   }
 
-  // Ejercicio esta semana (Lun-Dom)
+  // Ejercicio esta semana
   const ws = weekStart(today);
   let exerciseThisWeek = 0;
   for(let d = new Date(ws); d <= addDays(ws,6); d = addDays(d,1)){
@@ -486,7 +539,7 @@ async function renderHabitIndicators(){
     if(row) exerciseThisWeek += (row.exercise_sessions||0);
   }
 
-  // Semanas consecutivas cumpliendo meta (>=3 sesiones/sem)
+  // Semanas seguidas cumpliendo (≥3 sesiones/sem)
   let weeksInARow = 0;
   for(let w=0; w<26; w++){
     const start = addDays(weekStart(today), -7*w);
@@ -529,12 +582,149 @@ async function renderHabitIndicators(){
   `;
 }
 
-// Routing
+// ===== Finanzas helpers =====
+function firstDayOfMonthYYYYMM(yyyyMM){
+  const [y,m] = yyyyMM.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m-1, 1, 5, 0, 0));
+  return d;
+}
+function nextMonth(dateObj){
+  const d = new Date(dateObj);
+  d.setUTCMonth(d.getUTCMonth()+1);
+  return d;
+}
+function monthStartDateStr(yyyyMM){
+  const [y,m] = yyyyMM.split('-');
+  return `${y}-${m}-01`;
+}
+function soles(n){ return (n||0).toFixed(2); }
+
+// ===== Finanzas fetch =====
+async function fetchExpensesMonth(yyyyMM){
+  const start = firstDayOfMonthYYYYMM(yyyyMM).toISOString();
+  const end = nextMonth(firstDayOfMonthYYYYMM(yyyyMM)).toISOString();
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('user_id', sessionUser.id)
+    .gte('ts', start).lt('ts', end)
+    .order('ts', { ascending: true });
+  if(error){ console.error(error); return []; }
+  return data;
+}
+async function fetchBudgetMonth(yyyyMM){
+  const month_start = monthStartDateStr(yyyyMM);
+  const { data, error } = await supabase
+    .from('monthly_budgets')
+    .select('*')
+    .eq('user_id', sessionUser.id)
+    .eq('month_start', month_start)
+    .maybeSingle();
+  if(error){ console.error(error); return null; }
+  return data;
+}
+async function upsertBudgetMonth(yyyyMM, income){
+  const month_start = monthStartDateStr(yyyyMM);
+  const payload = { user_id: sessionUser.id, month_start, income };
+  const { error } = await supabase.from('monthly_budgets').upsert(payload);
+  if(error){ console.error(error); alert('No se pudo guardar el presupuesto'); }
+}
+
+// ===== Finanzas render =====
+function buildPieByCategory(expenses){
+  const cats = ['Comida','Transporte','Ocio','Salud','Otros'];
+  const sums = cats.map(c => expenses.filter(e=>e.category===c).reduce((a,b)=>a+Number(b.amount),0));
+  return { labels: cats, data: sums };
+}
+function buildBarsByDay(expenses, yyyyMM){
+  const [y,m] = yyyyMM.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const labels = Array.from({length: daysInMonth}, (_,i)=> String(i+1).padStart(2,'0'));
+  const sums = new Array(daysInMonth).fill(0);
+  expenses.forEach(e=>{
+    const d = new Date(e.ts);
+    if(d.getUTCMonth()+1 === m && d.getUTCFullYear() === y){
+      const day = d.getUTCDate();
+      sums[day-1] += Number(e.amount);
+    }
+  });
+  return { labels, data: sums };
+}
+function renderPie(ctx, labels, data){
+  if(chartPie) chartPie.destroy();
+  chartPie = new Chart(ctx, {
+    type: 'pie',
+    data: { labels, datasets: [{ data }] },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+  });
+}
+function renderBars(ctx, labels, data){
+  if(chartBars) chartBars.destroy();
+  chartBars = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true } } }
+  });
+}
+function renderTable(expenses, cat='', text=''){
+  let list = expenses;
+  if(cat) list = list.filter(e=>e.category===cat);
+  if(text) list = list.filter(e=> (e.description||'').toLowerCase().includes(text.toLowerCase()));
+  if(list.length===0){
+    finTable.innerHTML = '<p style="color:#6a5e52">No hay movimientos para el filtro.</p>';
+    return;
+  }
+  const rows = list.map(e=>{
+    const d = new Date(e.ts);
+    const fecha = d.toLocaleString('es-PE', { timeZone: 'America/Lima' });
+    return `<tr><td>${fecha}</td><td>S/ ${soles(Number(e.amount))}</td><td>${e.category}</td><td>${e.description||''}</td></tr>`;
+  }).join('');
+  finTable.innerHTML = `
+    <table>
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Categoría</th><th>Descripción</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+async function renderFinance(){
+  const yyyyMM = finMonth.value || new Date().toISOString().slice(0,7);
+  finMonth.value = yyyyMM;
+
+  const [expenses, budgetRow] = await Promise.all([
+    fetchExpensesMonth(yyyyMM),
+    fetchBudgetMonth(yyyyMM)
+  ]);
+
+  const total = expenses.reduce((a,b)=>a+Number(b.amount),0);
+  const [y,m] = yyyyMM.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const avg = total / daysInMonth;
+  kpiTotal.textContent = soles(total);
+  kpiAvg.textContent = soles(avg);
+  kpiCount.textContent = String(expenses.length);
+
+  const income = budgetRow?.income ? Number(budgetRow.income) : 0;
+  finBudget.value = income ? String(income) : '';
+  const remaining = Math.max(0, income - total);
+  kpiRemaining.textContent = soles(remaining);
+
+  const pie = buildPieByCategory(expenses);
+  renderPie(document.getElementById('chart-pie'), pie.labels, pie.data);
+
+  const bars = buildBarsByDay(expenses, yyyyMM);
+  renderBars(document.getElementById('chart-bars'), bars.labels, bars.data);
+
+  renderTable(expenses, finFilterCat?.value || '', finFilterText?.value || '');
+
+  window.__expensesCache = expenses;
+}
+
+// ===== Routing =====
 function showDashboard(){ show(dashboardView); hide(habitsView); hide(financeView); }
 function showHabits(){ hide(dashboardView); show(habitsView); hide(financeView); }
 function showFinance(){ hide(dashboardView); hide(habitsView); show(financeView); }
 
-let currentFilter = "all";
+// ===== Filters (Dashboard) =====
 filterBtns.forEach(btn=>{
   btn.addEventListener('click', ()=>{
     filterBtns.forEach(b=>b.classList.remove('selected'));
@@ -544,7 +734,7 @@ filterBtns.forEach(btn=>{
   });
 });
 
-// Eventos
+// ===== Events =====
 loginBtn.addEventListener('click', async ()=>{
   loginMsg.textContent = "Conectando...";
   const u = document.getElementById('username').value.trim();
@@ -574,9 +764,26 @@ navHabits.addEventListener('click', async ()=>{
   await renderHabitsSummary();
   await renderHabitIndicators();
 });
-navFinance.addEventListener('click', showFinance);
 
-// Clicks en cupones
+// Finanzas listeners
+navFinance.addEventListener('click', async ()=>{
+  showFinance();
+  if(!finMonth.value) finMonth.value = new Date().toISOString().slice(0,7);
+  await renderFinance();
+});
+finRefresh?.addEventListener('click', renderFinance);
+finApplyFilter?.addEventListener('click', ()=>{
+  const exps = window.__expensesCache || [];
+  renderTable(exps, finFilterCat.value, finFilterText.value);
+});
+finSaveBudget?.addEventListener('click', async ()=>{
+  const yyyyMM = finMonth.value || new Date().toISOString().slice(0,7);
+  const income = Number(finBudget.value||0);
+  await upsertBudgetMonth(yyyyMM, income);
+  await renderFinance();
+});
+
+// Coupons grid actions
 couponsGrid.addEventListener('click', async (e)=>{
   const btn = e.target.closest('button');
   if(!btn) return;
@@ -593,25 +800,26 @@ couponsGrid.addEventListener('click', async (e)=>{
   }
 });
 
+// Modal
 modalClose.addEventListener('click', closeModal);
 modal.addEventListener('click', (e)=>{ if(e.target===modal) closeModal(); });
 
-// Marcación usando la fecha seleccionada
-document.getElementById('mark-healthy').addEventListener('click', ()=>{
+// Habits mark (date selector)
+document.getElementById('mark-healthy')?.addEventListener('click', ()=>{
   const dateStr = habitDateInput?.value || todayStr();
   markForDate('healthy', dateStr);
 });
-document.getElementById('mark-junk').addEventListener('click', ()=>{
+document.getElementById('mark-junk')?.addEventListener('click', ()=>{
   const dateStr = habitDateInput?.value || todayStr();
   markForDate('junk', dateStr);
 });
-document.getElementById('add-exercise').addEventListener('click', ()=>{
+document.getElementById('add-exercise')?.addEventListener('click', ()=>{
   const dateStr = habitDateInput?.value || todayStr();
   markForDate('exercise', dateStr);
 });
-resetHabitsBtn.addEventListener('click', resetHabits);
+resetHabitsBtn?.addEventListener('click', resetHabits);
 
-// Init
+// ===== Init =====
 (async function init(){
   await loadCoupons();
   const { data: { user } } = await supabase.auth.getUser();
