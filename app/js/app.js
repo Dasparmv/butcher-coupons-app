@@ -579,7 +579,6 @@ navHabits.addEventListener('click', async ()=>{
 });
 navFinance.addEventListener('click', showFinance);
 
-const couponsGrid = document.getElementById('coupons-grid');
 couponsGrid.addEventListener('click', async (e)=>{
   const btn = e.target.closest('button');
   if(!btn) return;
